@@ -51,6 +51,7 @@ def parse_args():
                         help='if set, predicts metric depth instead of disparity. (This only '
                              'makes sense for stereo-trained KITTI models).',
                         action='store_true')
+    parser.add_argument('--save_dir', type=str, default='inference/output', help='directory to save results')
 
     return parser.parse_args()
 
@@ -103,14 +104,15 @@ def test_simple(args):
     if os.path.isfile(args.image_path):
         # Only testing on a single image
         paths = [args.image_path]
-        output_directory = os.path.dirname(args.image_path)
+        # output_directory = os.path.dirname(args.image_path)
     elif os.path.isdir(args.image_path):
         # Searching folder for images
         paths = glob.glob(os.path.join(args.image_path, '*.{}'.format(args.ext)))
-        output_directory = args.image_path
+        # output_directory = args.image_path
     else:
         raise Exception("Can not find args.image_path: {}".format(args.image_path))
 
+    output_directory = args.save_dir
     print("-> Predicting on {:d} test images".format(len(paths)))
 
     # PREDICTING ON EACH IMAGE IN TURN
