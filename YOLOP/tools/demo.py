@@ -38,6 +38,19 @@ transform = transforms.Compose([
     normalize,
 ])
 
+def xyxy2xywhn(x, w=640, h=640):
+    # Convert nx4 boxes from [x1, y1, x2, y2] to [x, y, w, h] normalized where xy1=top-left, xy2=bottom-right
+    y = x.clone() if isinstance(x, torch.Tensor) else np.copy(x)
+    # y[:, 0] = ((x[:, 0] + x[:, 2]) / 2) / w  # x center
+    # y[:, 1] = ((x[:, 1] + x[:, 3]) / 2) / h  # y center
+    # y[:, 2] = (x[:, 2] - x[:, 0]) / w  # width
+    # y[:, 3] = (x[:, 3] - x[:, 1]) / h  # height
+
+    y[:, 0] = (x[:, 0]) / w  # x center
+    y[:, 1] = (x[:, 1]) / h  # y center
+    y[:, 2] = (x[:, 2]) / w  # width
+    y[:, 3] = (x[:, 3]) / h  # height
+    return y
 
 def detect(cfg, opt):
     logger, _, _ = create_logger(
@@ -84,7 +97,14 @@ def detect(cfg, opt):
     inf_time = AverageMeter()
     nms_time = AverageMeter()
 
+    if os.path.exists(str(opt.save_dir + '/labels/')):
+            shutil.rmtree(str(opt.save_dir + '/labels/'))
+        
+    os.makedirs(str(opt.save_dir + '/labels/'))
+
     for i, (path, img, img_det, vid_cap, shapes) in tqdm(enumerate(dataset), total=len(dataset)):
+
+        txt_path = str(opt.save_dir + '/labels/' +  Path(path).stem) + ('')  # im.txt
         img = transform(img).to(device)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         if img.ndimension() == 3:
@@ -110,6 +130,8 @@ def detect(cfg, opt):
         save_path = str(opt.save_dir + '/' + Path(path).name) if dataset.mode != 'stream' else str(
             opt.save_dir + '/' + "web.mp4")
 
+        
+
         _, _, height, width = img.shape
         h, w, _ = img_det.shape
         pad_w, pad_h = shapes[1][1]
@@ -133,11 +155,21 @@ def detect(cfg, opt):
 
         img_det = show_seg_result(img_det, (da_seg_mask, ll_seg_mask), _, _, is_demo=True)
 
+        gn = torch.tensor(img.shape)[[1, 0, 1, 0]]  # normalization gain whwh
+
         if len(det):
             det[:, :4] = scale_coords(img.shape[2:], det[:, :4], img_det.shape).round()
             for *xyxy, conf, cls in reversed(det):
                 label_det_pred = f'{names[int(cls)]} {conf:.2f}'
                 plot_one_box(xyxy, img_det, label=label_det_pred, color=colors[int(cls)], line_thickness=2)
+                xywh = (xyxy2xywhn(torch.tensor(xyxy).view(1, 4), img_det.shape[1], img_det.shape[0])).view(-1).tolist()   # normalized xywh
+                line = (cls, *xywh)  # label format
+                try:
+                  with open(f'{txt_path}.txt', 'a') as f:
+                      f.write(('%g ' * len(line)).rstrip() % line + '\n')
+                except:
+                  with open(f'{txt_path}.txt', 'w') as f:
+                      f.write(('%g ' * len(line)).rstrip() % line + '\n')
 
         if dataset.mode == 'images':
             cv2.imwrite(save_path, img_det)
